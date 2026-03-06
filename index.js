@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
@@ -11,7 +12,7 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 function limpiarManual(tipo, texto) {
   let t = texto.trim();
   if (tipo === 'nombre') {
-    t = t.replace(/^(me llamo|mi nombre es|soy|a nombre de|ponlo a nombre de|anótalo a nombre de|el nombre es|de)\s+/i, '');
+    t = t.replace(/^(me llamo|mi nombre es|soy|a nombre de|ponlo a nombre de|el nombre es|de)\s+/i, '');
   } else {
     t = t.replace(/^(mi dirección es|vivo en|mándalo a|envíalo a|la dirección es|a la dirección|a la calle|queda en|a)\s+/i, '');
   }
@@ -33,6 +34,12 @@ async function extraerConIA(tipo, texto) {
     return limpiarManual(tipo, texto);
   }
 }
+
+app.get('/', (req, res) => res.json({ status: 'ok', message: 'Webhook TastyPostres ✅' }));
+
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, 'privacy.html'));
+});
 
 app.post('/webhook', async (req, res) => {
   const intentName = req.body.queryResult?.intent?.displayName || '';
@@ -70,7 +77,5 @@ app.post('/webhook', async (req, res) => {
 
   return res.json({ fulfillmentText: '' });
 });
-
-app.get('/', (req, res) => res.json({ status: 'ok', message: 'Webhook TastyPostres ✅' }));
 
 app.listen(PORT, () => console.log(`🚀 Webhook corriendo en puerto ${PORT}`));
