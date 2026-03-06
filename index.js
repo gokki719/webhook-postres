@@ -8,24 +8,29 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const PORT = process.env.PORT || 3000;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+function limpiarManual(tipo, texto) {
+  let t = texto.trim();
+  if (tipo === 'nombre') {
+    t = t.replace(/^(me llamo|mi nombre es|soy|a nombre de|ponlo a nombre de|anótalo a nombre de|el nombre es|de)\s+/i, '');
+  } else {
+    t = t.replace(/^(mi dirección es|vivo en|mándalo a|envíalo a|la dirección es|a la dirección|a la calle|queda en|a)\s+/i, '');
+  }
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 async function extraerConIA(tipo, texto) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     const prompts = {
-      nombre: `Extrae SOLO el nombre de la persona del siguiente texto. Quita prefijos como "me llamo", "soy", "a nombre de", "mi nombre es". Devuelve SOLO el nombre sin puntos ni explicaciones.\nTexto: "${texto}"\nNombre:`,
-      direccion: `Limpia y devuelve la dirección del siguiente texto tal como está, solo quita frases como "mi dirección es", "vivo en", "mándalo a". Devuelve SOLO la dirección.\nTexto: "${texto}"\nDirección:`
+      nombre: `Extrae SOLO el nombre completo de la persona. Elimina prefijos como "de", "me llamo", "soy", "a nombre de", "mi nombre es". Capitaliza correctamente. Devuelve SOLO el nombre sin puntos.\nTexto: "${texto}"\nNombre:`,
+      direccion: `Extrae SOLO la dirección. Elimina prefijos como "a", "a la calle", "mi dirección es", "vivo en", "mándalo a". Devuelve SOLO la dirección limpia.\nTexto: "${texto}"\nDirección:`
     };
     const result = await model.generateContent(prompts[tipo]);
     const respuesta = result.response.text().trim();
-    return respuesta || texto;
+    return respuesta || limpiarManual(tipo, texto);
   } catch (err) {
     console.error('Error Gemini:', err.message);
-    // Si Gemini falla, limpiar el texto manualmente
-    let limpio = texto
-      .replace(/^(me llamo|mi nombre es|soy|a nombre de|ponlo a nombre de)\s*/i, '')
-      .replace(/^(mi dirección es|vivo en|mándalo a|envíalo a|la dirección es|a la dirección|a la calle|queda en)\s*/i, '')
-      .trim();
-    return limpio || texto;
+    return limpiarManual(tipo, texto);
   }
 }
 
@@ -54,10 +59,11 @@ app.post('/webhook', async (req, res) => {
     const nombre = ctxDir?.parameters?.nombre || ctxPed?.parameters?.nombre || 'Cliente';
     const direccion = await extraerConIA('direccion', queryText);
     return res.json({
-      fulfillmentText: `✅ ¡Listo, ${nombre}!\n\n📋 Tu pedido:\n👤 ${nombre}\n📍 ${direccion}\n\nTe contactamos pronto 🛵💨\n\n¿Necesitas algo más? 😊`,
+      fulfillmentText: `✅ ¡Listo, ${nombre}!\n\n📋 Resumen de tu pedido:\n👤 Nombre: ${nombre}\n📍 Dirección: ${direccion}\n\n🛵 Te contactamos pronto para confirmar la entrega.\n\n¡Gracias por tu compra! 🍰`,
       outputContexts: [
         { name: `${req.body.session}/contexts/esperando_direccion`, lifespanCount: 0 },
-        { name: `${req.body.session}/contexts/pedido_en_proceso`, lifespanCount: 0 }
+        { name: `${req.body.session}/contexts/pedido_en_proceso`, lifespanCount: 0 },
+        { name: `${req.body.session}/contexts/pedido_confirmado`, lifespanCount: 2 }
       ]
     });
   }
