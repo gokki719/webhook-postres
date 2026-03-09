@@ -26,7 +26,7 @@ async function getSheetsClient() {
 const PRECIOS = {
   pastel:   { rebanada: 45, 'pastel completo': 350 },
   helado:   { 'copa sencilla': 30, 'copa doble': 45 },
-  gelatina: 25, pay: 35, galletas: 30, yogurt: 35, trufas: 35,
+  gelatina: 20, pay: 30, galletas: 25, yogurt: 25, trufas: 35,
   fruta:    { chico: 25, mediano: 35, grande: 50 },
 };
 
