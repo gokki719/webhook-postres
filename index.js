@@ -51,12 +51,12 @@ async function guardarEnSheets(datos) {
   try {
     const sheets = google.sheets({ version: 'v4', auth: await auth.getClient() });
     const ahora = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Hoja1!A:A' });
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Hoja 1!A:A' });
     const filas = res.data.values || [];
     const numPedido = `PED-${String(filas.length).padStart(4, '0')}`;
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: 'Hoja1!A:G',
+      range: 'Hoja 1!A:G',
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[numPedido, datos.nombre, datos.postre, datos.cantidad, ahora, datos.direccion, `$${datos.total}`]] }
     });
