@@ -51,7 +51,9 @@ async function guardarEnSheets(datos) {
     console.log('📊 Intentando leer Sheet ID:', SHEET_ID);
     
     const ahora = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
-    const numPedido = `PED-${Date.now().toString().slice(-6)}`;
+    const resCount = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'A:A' });
+    const numFilas = (resCount.data.values || []).length;
+    const numPedido = `PED-${String(numFilas).padStart(6, '0')}`;
     
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
