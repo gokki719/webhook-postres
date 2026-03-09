@@ -52,7 +52,7 @@ async function guardarEnSheets(datos) {
     
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Hoja1!A:A'
+      range: 'A:A'
     });
     
     const filas = res.data.values || [];
@@ -63,7 +63,7 @@ async function guardarEnSheets(datos) {
     
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: 'Hoja1!A:G',
+      range: 'A:G',
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[numPedido, datos.nombre, datos.postre, datos.cantidad, ahora, datos.direccion, `$${datos.total}`]] }
     });
