@@ -297,8 +297,14 @@ app.post('/webhook', async (req, res) => {
 
     // Recuperar pedidos acumulados por agregar_mas_si (ya guardados)
     // o crear la lista con el pedido actual si es un pedido simple
-    const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
-    const pedidosAnteriores = ctxPed?.parameters?.pedidos_acumulados || [];
+    // Buscar acumulados en TODOS los contextos (confirmar_cantidad puede haberlos pisado)
+    let pedidosAnteriores = [];
+    for (const ctx of outputContexts) {
+      if (ctx.parameters?.pedidos_acumulados?.length > 0) {
+        pedidosAnteriores = ctx.parameters.pedidos_acumulados;
+        break;
+      }
+    }
 
     let pedidosAcumulados;
     if (pedidosAnteriores.length > 0) {
