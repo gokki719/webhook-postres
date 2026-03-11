@@ -201,6 +201,41 @@ function getParam(contexts, ...keys) {
   return '';
 }
 
+// Construye descripción completa del postre: "gelatina de mango", "pay de limón", etc.
+function construirDescPostre(postre, sabor, tamanio, tipo) {
+  const p = (postre || '').toLowerCase();
+  const partes = [];
+
+  // Sabor primero
+  const saborFinal = sabor || tipo || '';
+
+  if (p.includes('pastel')) {
+    if (saborFinal) partes.push('pastel de ' + saborFinal);
+    else partes.push('pastel');
+    if (tamanio) partes.push(tamanio);
+  } else if (p.includes('helado')) {
+    if (saborFinal) partes.push('helado de ' + saborFinal);
+    else partes.push('helado');
+    if (tipo) partes.push(tipo); // copa sencilla/doble
+  } else if (p.includes('gelatina')) {
+    partes.push(saborFinal ? 'gelatina de ' + saborFinal : 'gelatina');
+  } else if (p.includes('pay')) {
+    partes.push(saborFinal ? 'pay de ' + saborFinal : 'pay');
+  } else if (p.includes('galleta')) {
+    partes.push(saborFinal ? 'galletas ' + saborFinal : 'galletas');
+  } else if (p.includes('yogurt')) {
+    partes.push(saborFinal ? 'yogurt de ' + saborFinal : 'yogurt');
+  } else if (p.includes('trufa')) {
+    partes.push(saborFinal ? 'trufas de ' + saborFinal : 'trufas');
+  } else if (p.includes('fruta')) {
+    partes.push(tamanio ? 'fruta picada ' + tamanio : 'fruta picada');
+  } else {
+    partes.push([saborFinal, tamanio, postre].filter(Boolean).join(' '));
+  }
+
+  return partes.join(' ').trim();
+}
+
 // ─── RUTAS ────────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', message: 'Webhook TastyPostres OK' }));
 app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'privacy.html')));
@@ -223,7 +258,7 @@ app.post('/webhook', async (req, res) => {
     const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
     const prevAcumulados = ctxPed?.parameters?.pedidos_acumulados || [];
 
-    const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+    const postresDesc = construirDescPostre(postre, sabor, tamanio, tipo);
     const totalItem   = calcularTotal(postre, cantidad, tamanio, tipo);
     const pedidosAcumulados = [
       ...prevAcumulados,
@@ -261,7 +296,7 @@ app.post('/webhook', async (req, res) => {
     let pedidosAcumulados;
     if (pedidosAnteriores.length > 0) {
       // Ya se acumularon en agregar_mas_si — solo agregar el último postre pedido
-      const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+      const postresDesc = construirDescPostre(postre, sabor, tamanio, tipo);
       const totalActual = calcularTotal(postre, cantidad, tamanio, tipo);
       pedidosAcumulados = [
         ...pedidosAnteriores,
@@ -269,7 +304,7 @@ app.post('/webhook', async (req, res) => {
       ];
     } else {
       // Pedido simple sin "agregar más"
-      const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+      const postresDesc = construirDescPostre(postre, sabor, tamanio, tipo);
       const totalActual = calcularTotal(postre, cantidad, tamanio, tipo);
       pedidosAcumulados = [{ postre: postresDesc, cantidad, total: totalActual }];
     }
