@@ -270,8 +270,9 @@ app.post('/webhook', async (req, res) => {
     return res.json({
       fulfillmentText: '¡Claro! 😊 ¿Qué más quieres?\n\nRecuerda que tenemos:\n🍰 Pasteles  🍮 Gelatina  🍦 Helados\n🍪 Galletas  🍫 Trufas  🍓 Fruta picada\n🥧 Pay  🥛 Yogurt',
       outputContexts: [
-        { name: req.body.session + '/contexts/esperando_agregar_mas', lifespanCount: 0 },
-        { name: req.body.session + '/contexts/pedido_en_proceso',     lifespanCount: 10, parameters: { pedidos_acumulados: pedidosAcumulados } },
+        { name: req.body.session + '/contexts/esperando_agregar_mas',  lifespanCount: 0 },
+        { name: req.body.session + '/contexts/pedido_en_proceso',      lifespanCount: 10, parameters: { pedidos_acumulados: pedidosAcumulados } },
+        { name: req.body.session + '/contexts/esperando_nuevo_postre', lifespanCount: 5 },
       ]
     });
   }
