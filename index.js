@@ -262,7 +262,7 @@ app.post('/webhook', async (req, res) => {
       fulfillmentText: `Perfecto, ${cantidad}. ¿Quieres agregar algo más?`,
       outputContexts: [
         { name: req.body.session + '/contexts/esperando_agregar_mas', lifespanCount: 5 },
-        { name: req.body.session + '/contexts/esperando_cantidad',    lifespanCount: 5 },
+        { name: req.body.session + '/contexts/esperando_cantidad',    lifespanCount: 0 },
         { name: req.body.session + '/contexts/pedido_en_proceso',     lifespanCount: 15, parameters: { pedidos_acumulados: prevAcumulados } },
       ]
     });
