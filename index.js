@@ -247,6 +247,46 @@ app.post('/webhook', async (req, res) => {
 
   console.log(`Intent: ${intentName} | Query: "${queryText}"`);
 
+  // ── Intent: confirmar_cantidad — propagar acumulados para que no se pierdan ──
+  if (intentName === 'confirmar_cantidad') {
+    const cantidad = Number(getParam(outputContexts, 'cantidad')) || 1;
+    // Preservar acumulados que vengan de agregar_mas_si
+    let prevAcumulados = [];
+    for (const ctx of outputContexts) {
+      if (ctx.parameters?.pedidos_acumulados?.length > 0) {
+        prevAcumulados = ctx.parameters.pedidos_acumulados;
+        break;
+      }
+    }
+    return res.json({
+      fulfillmentText: `Perfecto, ${cantidad}. ¿Quieres agregar algo más?`,
+      outputContexts: [
+        { name: req.body.session + '/contexts/esperando_agregar_mas', lifespanCount: 5 },
+        { name: req.body.session + '/contexts/esperando_cantidad',    lifespanCount: 5 },
+        { name: req.body.session + '/contexts/pedido_en_proceso',     lifespanCount: 15, parameters: { pedidos_acumulados: prevAcumulados } },
+      ]
+    });
+  }
+
+  // ── Intent: agregar_mas_no — propagar acumulados a esperando_nombre ──────
+  if (intentName === 'agregar_mas_no') {
+    let prevAcumulados = [];
+    for (const ctx of outputContexts) {
+      if (ctx.parameters?.pedidos_acumulados?.length > 0) {
+        prevAcumulados = ctx.parameters.pedidos_acumulados;
+        break;
+      }
+    }
+    return res.json({
+      fulfillmentText: '¡Perfecto! ¿A nombre de quién va el pedido?',
+      outputContexts: [
+        { name: req.body.session + '/contexts/esperando_agregar_mas', lifespanCount: 0 },
+        { name: req.body.session + '/contexts/esperando_nombre',      lifespanCount: 5 },
+        { name: req.body.session + '/contexts/pedido_en_proceso',     lifespanCount: 15, parameters: { pedidos_acumulados: prevAcumulados } },
+      ]
+    });
+  }
+
   // ── Intent: agregar_mas_si — guardar pedido actual antes de que se pierda ──
   if (intentName === 'agregar_mas_si') {
     const postre   = getParam(outputContexts, 'postre');
