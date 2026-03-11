@@ -92,7 +92,7 @@ function limpiarDireccionManual(texto) {
 // ─── EXTRACCIÓN CON GEMINI (con fallback automático al manual) ────────────────
 async function extraerConIA(tipo, texto) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const prompts = {
       nombre: `Extrae SOLO el nombre completo de la persona. Elimina CUALQUIER prefijo como "de", "me llamo", "soy", "a nombre de", "mi nombre es", "el pedido es para", "ponlo a nombre de". Capitaliza cada palabra. Devuelve SOLO el nombre, sin explicaciones, sin puntos.\nEjemplos:\n- "a nombre de luis angel malagon" → "Luis Angel Malagon"\n- "el pedido es para sofia garcia" → "Sofia Garcia"\n- "me llamo juan" → "Juan"\nTexto: "${texto}"\nNombre:`,
       direccion: `Extrae SOLO la dirección. Elimina prefijos como "a", "a la calle", "mi direccion es", "vivo en", "mandalo a". Devuelve SOLO la dirección, sin explicaciones.\nTexto: "${texto}"\nDireccion:`
