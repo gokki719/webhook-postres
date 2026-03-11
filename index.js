@@ -134,8 +134,6 @@ async function validarDireccion(direccion) {
         try {
           const data = JSON.parse(body);
           if (data.status === 'OK') {
-            // Google devuelve algo como "Calle X 123, Colonia, CDMX, Mexico"
-            // Quitamos ", Mexico" del final para que quede más limpio
             const formatted = data.results[0].formatted_address
               .replace(/,\s*México$/i, '')
               .replace(/,\s*Mexico$/i, '')
@@ -143,7 +141,8 @@ async function validarDireccion(direccion) {
             console.log(`Maps OK: "${formatted}"`);
             resolve(formatted);
           } else {
-            console.warn('Maps status:', data.status, '→ usando dirección original.');
+            // Log detallado para ver qué está pasando en Railway
+            console.warn(`Maps status: ${data.status} | error_message: ${data.error_message || 'ninguno'} | query: "${direccion}"`);
             resolve(null);
           }
         } catch (e) {
@@ -253,35 +252,45 @@ app.post('/webhook', async (req, res) => {
     const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
     const p      = ctxDir?.parameters || ctxPed?.parameters || {};
 
-    const nombre             = p.nombre || 'Cliente';
-    const pedidosAcumulados  = p.pedidos_acumulados || [];
+    const nombre            = p.nombre || 'Cliente';
+    const pedidosAcumulados = p.pedidos_acumulados || [];
 
-    // Construir resumen de todos los postres pedidos
     let resumenPostres = '';
+    let cantidadTotal  = 1;
     let totalGeneral   = 0;
 
     if (pedidosAcumulados.length > 0) {
-      resumenPostres = pedidosAcumulados
-        .map(item => `${item.cantidad}x ${item.postre}`)
-        .join('\n🍰 ');
-      totalGeneral = pedidosAcumulados.reduce((sum, item) => sum + (item.total || 0), 0);
+      // Flujo con webhook acumulando pedidos (agregar más)
+      resumenPostres = pedidosAcumulados.map(i => i.postre).join(' + ');
+      cantidadTotal  = pedidosAcumulados.reduce((s, i) => s + Number(i.cantidad || 1), 0);
+      totalGeneral   = pedidosAcumulados.reduce((s, i) => s + (i.total || 0), 0);
     } else {
-      // Fallback por si viene del flujo anterior sin acumulación
-      const postre  = p.postre  || getParam(outputContexts, 'postre')  || 'No especificado';
-      const sabor   = p.sabor   || getParam(outputContexts, 'sabor_pastel', 'sabor_helado', 'sabor_pay', 'sabor_gelatina', 'sabor_galleta', 'sabor_yogurt', 'sabor_trufa') || '';
-      const tamanio = p.tamanio || getParam(outputContexts, 'tamanio_pastel', 'tamanio_postre') || '';
-      const tipo    = p.tipo    || getParam(outputContexts, 'tipo_helado') || '';
-      const cantidad = p.cantidad || getParam(outputContexts, 'cantidad') || 1;
-      resumenPostres = `${cantidad}x ${[sabor, tamanio || tipo, postre].filter(Boolean).join(' ')}`;
+      // Flujo normal (1 solo postre) — leer de cualquier contexto disponible
+      const postre   = getParam(outputContexts, 'postre') || 'No especificado';
+      const sabor    = getParam(outputContexts, 'sabor_pastel', 'sabor_helado', 'sabor_pay',
+                                'sabor_gelatina', 'sabor_galleta', 'sabor_yogurt', 'sabor_trufa') || '';
+      const tamanio  = getParam(outputContexts, 'tamanio_pastel', 'tamanio_postre') || '';
+      const tipo     = getParam(outputContexts, 'tipo_helado') || '';
+      const cantidad = Number(getParam(outputContexts, 'cantidad')) || 1;
+
+      resumenPostres = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+      cantidadTotal  = cantidad;
       totalGeneral   = calcularTotal(postre, cantidad, tamanio, tipo);
     }
 
+    // Línea del mensaje al usuario (con cantidad visible)
+    const resumenMensaje = pedidosAcumulados.length > 0
+      ? pedidosAcumulados.map(i => `${i.cantidad}x ${i.postre}`).join('\n🍰 ')
+      : `${cantidadTotal}x ${resumenPostres}`;
+
     const direccionRaw = await extraerConIA('direccion', queryText);
     const direccion    = await validarDireccion(direccionRaw) || direccionRaw;
-    const numPedido    = await guardarEnSheets({
+
+    // Sheets: postre limpio en col C, cantidad numérica en col D
+    const numPedido = await guardarEnSheets({
       nombre,
-      postre:   resumenPostres.replace(/\n🍰 /g, ' + '), // en Sheets en una sola línea
-      cantidad: pedidosAcumulados.reduce((s, i) => s + Number(i.cantidad || 1), 0) || 1,
+      postre:   resumenPostres,
+      cantidad: cantidadTotal,
       direccion,
       total:    totalGeneral
     });
@@ -292,7 +301,7 @@ app.post('/webhook', async (req, res) => {
         `📋 Resumen:\n` +
         `🔖 No. Pedido: ${numPedido}\n` +
         `👤 Nombre: ${nombre}\n` +
-        `🍰 ${resumenPostres}\n` +
+        `🍰 ${resumenMensaje}\n` +
         `📍 Dirección: ${direccion}\n` +
         `💰 Total: $${totalGeneral}\n\n` +
         `🛵 Te contactamos pronto para confirmar.\n\n` +
