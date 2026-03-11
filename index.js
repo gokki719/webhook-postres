@@ -212,6 +212,35 @@ app.post('/webhook', async (req, res) => {
 
   console.log(`Intent: ${intentName} | Query: "${queryText}"`);
 
+  // ── Intent: agregar_mas_si — guardar pedido actual antes de que se pierda ──
+  if (intentName === 'agregar_mas_si') {
+    const postre   = getParam(outputContexts, 'postre');
+    const sabor    = getParam(outputContexts, 'sabor_pastel', 'sabor_helado', 'sabor_pay', 'sabor_gelatina', 'sabor_galleta', 'sabor_yogurt', 'sabor_trufa');
+    const tamanio  = getParam(outputContexts, 'tamanio_pastel', 'tamanio_postre');
+    const tipo     = getParam(outputContexts, 'tipo_helado');
+    const cantidad = Number(getParam(outputContexts, 'cantidad')) || 1;
+
+    const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
+    const prevAcumulados = ctxPed?.parameters?.pedidos_acumulados || [];
+
+    const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+    const totalItem   = calcularTotal(postre, cantidad, tamanio, tipo);
+    const pedidosAcumulados = [
+      ...prevAcumulados,
+      { postre: postresDesc, cantidad, total: totalItem }
+    ];
+
+    console.log('Acumulando: ' + cantidad + 'x ' + postresDesc + ' ($' + totalItem + ') | items: ' + pedidosAcumulados.length);
+
+    return res.json({
+      fulfillmentText: '¡Claro! 😊 ¿Qué más quieres?\n\nRecuerda que tenemos:\n🍰 Pasteles  🍮 Gelatina  🍦 Helados\n🍪 Galletas  🍫 Trufas  🍓 Fruta picada\n🥧 Pay  🥛 Yogurt',
+      outputContexts: [
+        { name: req.body.session + '/contexts/esperando_agregar_mas', lifespanCount: 0 },
+        { name: req.body.session + '/contexts/pedido_en_proceso',     lifespanCount: 10, parameters: { pedidos_acumulados: pedidosAcumulados } },
+      ]
+    });
+  }
+
   // ── Intent: pedir_nombre ──────────────────────────────────────────────────
   if (intentName === 'pedir_nombre') {
     // Limpiar el nombre desde lo que escribió el usuario (queryText)
@@ -224,17 +253,26 @@ app.post('/webhook', async (req, res) => {
     const tipo     = getParam(outputContexts, 'tipo_helado');
     const cantidad = getParam(outputContexts, 'cantidad');
 
-    // ── ACUMULACIÓN: recuperar pedidos anteriores si vienen del flujo "agregar más" ──
+    // Recuperar pedidos acumulados por agregar_mas_si (ya guardados)
+    // o crear la lista con el pedido actual si es un pedido simple
     const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
     const pedidosAnteriores = ctxPed?.parameters?.pedidos_acumulados || [];
 
-    // Agregar el postre actual a la lista acumulada
-    const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
-    const totalActual = calcularTotal(postre, cantidad, tamanio, tipo);
-    const pedidosAcumulados = [
-      ...pedidosAnteriores,
-      { postre: postresDesc, cantidad, tamanio, tipo, total: totalActual }
-    ];
+    let pedidosAcumulados;
+    if (pedidosAnteriores.length > 0) {
+      // Ya se acumularon en agregar_mas_si — solo agregar el último postre pedido
+      const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+      const totalActual = calcularTotal(postre, cantidad, tamanio, tipo);
+      pedidosAcumulados = [
+        ...pedidosAnteriores,
+        { postre: postresDesc, cantidad, total: totalActual }
+      ];
+    } else {
+      // Pedido simple sin "agregar más"
+      const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+      const totalActual = calcularTotal(postre, cantidad, tamanio, tipo);
+      pedidosAcumulados = [{ postre: postresDesc, cantidad, total: totalActual }];
+    }
 
     return res.json({
       fulfillmentText: `¡Gracias, ${nombre}! 😊\n\n📍 ¿A qué dirección te lo mandamos?\n(Escribe tu calle, número y colonia)`,
