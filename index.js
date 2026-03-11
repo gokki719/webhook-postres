@@ -372,26 +372,25 @@ app.post('/webhook', async (req, res) => {
 
   // ── Intent: pedir_direccion / captura_direccion_fallback ──────────────────
   if (intentName === 'pedir_direccion' || intentName === 'captura_direccion_fallback') {
-    const ctxDir = outputContexts.find(c => c.name.includes('esperando_direccion'));
-    const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
+    // Leer parámetros directos del intent (Dialogflow los pasa en queryResult.parameters)
+    const intentParams = req.body.queryResult?.parameters || {};
 
-    // DEBUG
-    console.log('ctxDir acumulados:', ctxDir?.parameters?.pedidos_acumulados?.length ?? 'sin ctxDir');
-    console.log('ctxPed acumulados:', ctxPed?.parameters?.pedidos_acumulados?.length ?? 'sin ctxPed');
-    // Buscar en TODOS los contextos
-    let pedidosAcumulados = [];
-    let nombre = 'Cliente';
-    for (const ctx of outputContexts) {
-      if (ctx.parameters?.pedidos_acumulados?.length > 0) {
-        pedidosAcumulados = ctx.parameters.pedidos_acumulados;
-        console.log('Acumulados encontrados en:', ctx.name.split('/contexts/')[1], '| items:', pedidosAcumulados.length);
-        break;
+    // Buscar nombre y acumulados: primero en parámetros directos, luego en contextos
+    let nombre = intentParams.nombre || 'Cliente';
+    let pedidosAcumulados = (intentParams.pedidos_acumulados?.length > 0)
+      ? intentParams.pedidos_acumulados
+      : [];
+
+    // Si no vinieron en parámetros directos, buscar en contextos
+    if (pedidosAcumulados.length === 0 || nombre === 'Cliente') {
+      for (const ctx of outputContexts) {
+        if (nombre === 'Cliente' && ctx.parameters?.nombre) nombre = ctx.parameters.nombre;
+        if (pedidosAcumulados.length === 0 && ctx.parameters?.pedidos_acumulados?.length > 0) {
+          pedidosAcumulados = ctx.parameters.pedidos_acumulados;
+        }
       }
     }
-    // Buscar nombre en cualquier contexto
-    for (const ctx of outputContexts) {
-      if (ctx.parameters?.nombre) { nombre = ctx.parameters.nombre; break; }
-    }
+    console.log('direccion: nombre=' + nombre + ' | acumulados=' + pedidosAcumulados.length);
 
     let resumenPostres = '';
     let cantidadTotal  = 1;
