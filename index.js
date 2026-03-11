@@ -289,6 +289,15 @@ app.post('/webhook', async (req, res) => {
 
   // ── Intent: agregar_mas_si — guardar pedido actual antes de que se pierda ──
   if (intentName === 'agregar_mas_si') {
+    // DEBUG: ver exactamente qué contextos y parámetros llegan
+    console.log('=== CONTEXTOS agregar_mas_si ===');
+    for (const ctx of outputContexts) {
+      const params = Object.entries(ctx.parameters || {})
+        .filter(([k,v]) => v && !k.endsWith('.original'))
+        .map(([k,v]) => k + '=' + JSON.stringify(v)).join(', ');
+      if (params) console.log(' ', ctx.name.split('/contexts/')[1], ':', params);
+    }
+    console.log('=== FIN CONTEXTOS ===');
     const postre   = getParam(outputContexts, 'postre');
     const sabor    = getParam(outputContexts, 'sabor_pastel', 'sabor_helado', 'sabor_pay', 'sabor_gelatina', 'sabor_galleta', 'sabor_yogurt', 'sabor_trufa');
     const tamanio  = getParam(outputContexts, 'tamanio_pastel', 'tamanio_postre');
