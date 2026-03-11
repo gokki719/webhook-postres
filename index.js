@@ -26,53 +26,141 @@ async function getSheetsClient() {
   return sheetsClient;
 }
 
+// ─── PRECIOS ────────────────────────────────────────────────────────────────
 const PRECIOS = {
   pastel:   { rebanada: 45, 'pastel completo': 350 },
   helado:   { 'copa sencilla': 30, 'copa doble': 45 },
-  gelatina: 20, pay: 30, galletas: 25, yogurt: 25, trufas: 35,
+  gelatina: 20,
+  pay:      30,
+  galletas: 25,
+  yogurt:   25,
+  trufas:   35,
   fruta:    { chico: 25, mediano: 35, grande: 50 },
 };
 
 function calcularTotal(postre, cantidad, tamanio, tipo) {
-  const p = (postre || '').toLowerCase();
+  const p    = (postre || '').toLowerCase();
   const cant = parseInt(cantidad) || 1;
   let precio = 0;
-  if (p.includes('pastel'))        precio = PRECIOS.pastel[tamanio] || 45;
-  else if (p.includes('helado'))   precio = PRECIOS.helado[tipo] || 30;
+  if      (p.includes('pastel'))   precio = PRECIOS.pastel[tamanio]  || 45;
+  else if (p.includes('helado'))   precio = PRECIOS.helado[tipo]     || 30;
   else if (p.includes('gelatina')) precio = PRECIOS.gelatina;
   else if (p.includes('pay'))      precio = PRECIOS.pay;
   else if (p.includes('galleta'))  precio = PRECIOS.galletas;
   else if (p.includes('yogurt'))   precio = PRECIOS.yogurt;
   else if (p.includes('trufa'))    precio = PRECIOS.trufas;
-  else if (p.includes('fruta'))    precio = PRECIOS.fruta[tamanio] || 25;
+  else if (p.includes('fruta'))    precio = PRECIOS.fruta[tamanio]   || 25;
   return precio * cant;
 }
 
-function limpiarManual(tipo, texto) {
-  let t = texto.trim();
-  if (tipo === 'nombre') {
-    t = t.replace(/^(me llamo|mi nombre es|soy|a nombre de|ponlo a nombre de|el nombre es|de)\s+/i, '');
-  } else {
-    t = t.replace(/^(mi direccion es|vivo en|mandalo a|envialo a|la direccion es|a la direccion|a la calle|queda en|a)\s+/i, '');
+// ─── LIMPIEZA MANUAL (fallback cuando Gemini no está disponible) ──────────────
+const PREFIJOS_NOMBRE = [
+  'el pedido es para', 'el pedido para', 'ponlo a nombre de',
+  'a nombre de', 'mi nombre es', 'me llamo', 'soy', 'de parte de',
+  'de', 'para', 'nombre'
+];
+
+function limpiarNombreManual(texto) {
+  let t = texto.trim().toLowerCase();
+  const prefijosOrdenados = [...PREFIJOS_NOMBRE].sort((a, b) => b.length - a.length);
+  for (const prefijo of prefijosOrdenados) {
+    const regex = new RegExp(`^${prefijo}\\s+`, 'i');
+    if (regex.test(t)) { t = t.replace(regex, ''); break; }
   }
+  t = t.replace(/^[,.:;¿?¡!]+|[,.:;¿?¡!]+$/g, '').trim();
+  return t.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+const PREFIJOS_DIRECCION = [
+  'mi dirección es', 'mi direccion es', 'vivo en', 'mándalo a', 'mandalo a',
+  'envíalo a', 'envialo a', 'la dirección es', 'la direccion es',
+  'a la dirección', 'a la direccion', 'a la calle', 'queda en',
+  'es en', 'está en', 'esta en', 'dirección', 'direccion', 'a'
+];
+
+function limpiarDireccionManual(texto) {
+  let t = texto.trim();
+  const prefijosOrdenados = [...PREFIJOS_DIRECCION].sort((a, b) => b.length - a.length);
+  for (const prefijo of prefijosOrdenados) {
+    const regex = new RegExp(`^${prefijo}\\s+`, 'i');
+    if (regex.test(t)) { t = t.replace(regex, ''); break; }
+  }
+  t = t.replace(/^[,.:;¿?¡!]+|[,.:;¿?¡!]+$/g, '').trim();
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+// ─── EXTRACCIÓN CON GEMINI (con fallback automático al manual) ────────────────
 async function extraerConIA(tipo, texto) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
     const prompts = {
-      nombre: `Extrae SOLO el nombre completo. Elimina prefijos como "de", "me llamo", "soy", "a nombre de", "mi nombre es". Capitaliza cada palabra. Devuelve SOLO el nombre, sin explicaciones.\nTexto: "${texto}"\nNombre:`,
-      direccion: `Extrae SOLO la direccion. Elimina prefijos como "a", "a la calle", "mi direccion es", "vivo en", "mandalo a". Devuelve SOLO la direccion, sin explicaciones.\nTexto: "${texto}"\nDireccion:`
+      nombre: `Extrae SOLO el nombre completo de la persona. Elimina CUALQUIER prefijo como "de", "me llamo", "soy", "a nombre de", "mi nombre es", "el pedido es para", "ponlo a nombre de". Capitaliza cada palabra. Devuelve SOLO el nombre, sin explicaciones, sin puntos.\nEjemplos:\n- "a nombre de luis angel malagon" → "Luis Angel Malagon"\n- "el pedido es para sofia garcia" → "Sofia Garcia"\n- "me llamo juan" → "Juan"\nTexto: "${texto}"\nNombre:`,
+      direccion: `Extrae SOLO la dirección. Elimina prefijos como "a", "a la calle", "mi direccion es", "vivo en", "mandalo a". Devuelve SOLO la dirección, sin explicaciones.\nTexto: "${texto}"\nDireccion:`
     };
     const result = await model.generateContent(prompts[tipo]);
-    return result.response.text().trim() || limpiarManual(tipo, texto);
-  } catch(err) {
-    console.error('Gemini no disponible, usando limpieza manual');
-    return limpiarManual(tipo, texto);
+    const respuesta = result.response.text().trim().replace(/\.$/, ''); // quitar punto final si lo pone
+    if (respuesta) {
+      console.log(`Gemini OK [${tipo}]: "${respuesta}"`);
+      return respuesta;
+    }
+    throw new Error('Respuesta vacía de Gemini');
+  } catch (err) {
+    console.warn(`Gemini no disponible (${err.message}), usando limpieza manual.`);
+    return tipo === 'nombre'
+      ? limpiarNombreManual(texto)
+      : limpiarDireccionManual(texto);
   }
 }
 
+// ─── VALIDACIÓN DE DIRECCIÓN CON MAPS ────────────────────────────────────────
+async function validarDireccion(direccion) {
+  if (!MAPS_API_KEY) {
+    console.warn('MAPS_API_KEY no configurada, se usará dirección tal como se recibió.');
+    return null;
+  }
+  return new Promise((resolve) => {
+    // Buscar en México específicamente para mejores resultados
+    const query = encodeURIComponent(direccion + ', Ciudad de Mexico, Mexico');
+    const options = {
+      hostname: 'maps.googleapis.com',
+      path: `/maps/api/geocode/json?address=${query}&components=country:MX&key=${MAPS_API_KEY}`,
+      method: 'GET',
+    };
+    const https = require('https');
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (data.status === 'OK') {
+            // Google devuelve algo como "Calle X 123, Colonia, CDMX, Mexico"
+            // Quitamos ", Mexico" del final para que quede más limpio
+            const formatted = data.results[0].formatted_address
+              .replace(/,\s*México$/i, '')
+              .replace(/,\s*Mexico$/i, '')
+              .trim();
+            console.log(`Maps OK: "${formatted}"`);
+            resolve(formatted);
+          } else {
+            console.warn('Maps status:', data.status, '→ usando dirección original.');
+            resolve(null);
+          }
+        } catch (e) {
+          console.error('Error parseando Maps:', e.message);
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', (e) => {
+      console.error('Error Maps API:', e.message);
+      resolve(null);
+    });
+    req.end();
+  });
+}
+
+// ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
 async function guardarEnSheets(datos) {
   try {
     const sheets = await getSheetsClient();
@@ -84,26 +172,27 @@ async function guardarEnSheets(datos) {
       spreadsheetId: SHEET_ID,
       range: 'A:G',
       valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[numPedido, datos.nombre, datos.postre, datos.cantidad, ahora, datos.direccion, `$${datos.total}`]] }
+      requestBody: {
+        values: [[
+          numPedido,
+          datos.nombre,
+          datos.postre,
+          datos.cantidad,
+          ahora,
+          datos.direccion,
+          `$${datos.total}`
+        ]]
+      }
     });
-    console.log('Guardado:', numPedido);
+    console.log('Pedido guardado:', numPedido);
     return numPedido;
-  } catch(err) {
+  } catch (err) {
     console.error('Error Sheets:', err.message);
     return 'PED-ERR';
   }
 }
 
-async function validarDireccion(direccion) {
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(direccion + ', Mexico')}&key=${MAPS_API_KEY}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.status === 'OK') return data.results[0].formatted_address;
-    return null;
-  } catch(e) { return null; }
-}
-
+// ─── HELPER: leer parámetros de contextos ────────────────────────────────────
 function getParam(contexts, ...keys) {
   for (const ctx of contexts) {
     for (const key of keys) {
@@ -113,57 +202,104 @@ function getParam(contexts, ...keys) {
   return '';
 }
 
+// ─── RUTAS ────────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', message: 'Webhook TastyPostres OK' }));
 app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'privacy.html')));
 
 app.post('/webhook', async (req, res) => {
-  const intentName = req.body.queryResult?.intent?.displayName || '';
-  const queryText = req.body.queryResult?.queryText || '';
-  const outputContexts = req.body.queryResult?.outputContexts || [];
+  const intentName     = req.body.queryResult?.intent?.displayName || '';
+  const queryText      = req.body.queryResult?.queryText           || '';
+  const outputContexts = req.body.queryResult?.outputContexts      || [];
 
   console.log(`Intent: ${intentName} | Query: "${queryText}"`);
 
+  // ── Intent: pedir_nombre ──────────────────────────────────────────────────
   if (intentName === 'pedir_nombre') {
+    // Limpiar el nombre desde lo que escribió el usuario (queryText)
     const nombre = await extraerConIA('nombre', queryText);
+
+    // Datos del postre ACTUAL
     const postre   = getParam(outputContexts, 'postre');
     const sabor    = getParam(outputContexts, 'sabor_pastel', 'sabor_helado', 'sabor_pay', 'sabor_gelatina', 'sabor_galleta', 'sabor_yogurt', 'sabor_trufa');
     const tamanio  = getParam(outputContexts, 'tamanio_pastel', 'tamanio_postre');
     const tipo     = getParam(outputContexts, 'tipo_helado');
     const cantidad = getParam(outputContexts, 'cantidad');
 
+    // ── ACUMULACIÓN: recuperar pedidos anteriores si vienen del flujo "agregar más" ──
+    const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
+    const pedidosAnteriores = ctxPed?.parameters?.pedidos_acumulados || [];
+
+    // Agregar el postre actual a la lista acumulada
+    const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+    const totalActual = calcularTotal(postre, cantidad, tamanio, tipo);
+    const pedidosAcumulados = [
+      ...pedidosAnteriores,
+      { postre: postresDesc, cantidad, tamanio, tipo, total: totalActual }
+    ];
+
     return res.json({
       fulfillmentText: `¡Gracias, ${nombre}! 😊\n\n📍 ¿A qué dirección te lo mandamos?\n(Escribe tu calle, número y colonia)`,
       outputContexts: [
-        { name: `${req.body.session}/contexts/esperando_nombre`, lifespanCount: 0 },
-        { name: `${req.body.session}/contexts/esperando_direccion`, lifespanCount: 10, parameters: { nombre, postre, sabor, tamanio, tipo, cantidad } },
-        { name: `${req.body.session}/contexts/pedido_en_proceso`, lifespanCount: 10, parameters: { nombre, postre, sabor, tamanio, tipo, cantidad } }
+        { name: `${req.body.session}/contexts/esperando_nombre`,    lifespanCount: 0 },
+        { name: `${req.body.session}/contexts/esperando_direccion`, lifespanCount: 10, parameters: { nombre, pedidos_acumulados: pedidosAcumulados } },
+        { name: `${req.body.session}/contexts/pedido_en_proceso`,   lifespanCount: 10, parameters: { nombre, pedidos_acumulados: pedidosAcumulados } },
       ]
     });
   }
 
+  // ── Intent: pedir_direccion / captura_direccion_fallback ──────────────────
   if (intentName === 'pedir_direccion' || intentName === 'captura_direccion_fallback') {
     const ctxDir = outputContexts.find(c => c.name.includes('esperando_direccion'));
     const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
-    const p = ctxDir?.parameters || ctxPed?.parameters || {};
+    const p      = ctxDir?.parameters || ctxPed?.parameters || {};
 
-    const nombre   = p.nombre || 'Cliente';
-    const postre   = p.postre || getParam(outputContexts, 'postre') || 'No especificado';
-    const sabor    = p.sabor || getParam(outputContexts, 'sabor_pastel', 'sabor_helado', 'sabor_pay', 'sabor_gelatina', 'sabor_galleta', 'sabor_yogurt', 'sabor_trufa') || '';
-    const tamanio  = p.tamanio || getParam(outputContexts, 'tamanio_pastel', 'tamanio_postre') || '';
-    const tipo     = p.tipo || getParam(outputContexts, 'tipo_helado') || '';
-    const cantidad = p.cantidad || getParam(outputContexts, 'cantidad') || 1;
+    const nombre             = p.nombre || 'Cliente';
+    const pedidosAcumulados  = p.pedidos_acumulados || [];
 
-    const postresDesc = [sabor, tamanio || tipo, postre].filter(Boolean).join(' ');
+    // Construir resumen de todos los postres pedidos
+    let resumenPostres = '';
+    let totalGeneral   = 0;
+
+    if (pedidosAcumulados.length > 0) {
+      resumenPostres = pedidosAcumulados
+        .map(item => `${item.cantidad}x ${item.postre}`)
+        .join('\n🍰 ');
+      totalGeneral = pedidosAcumulados.reduce((sum, item) => sum + (item.total || 0), 0);
+    } else {
+      // Fallback por si viene del flujo anterior sin acumulación
+      const postre  = p.postre  || getParam(outputContexts, 'postre')  || 'No especificado';
+      const sabor   = p.sabor   || getParam(outputContexts, 'sabor_pastel', 'sabor_helado', 'sabor_pay', 'sabor_gelatina', 'sabor_galleta', 'sabor_yogurt', 'sabor_trufa') || '';
+      const tamanio = p.tamanio || getParam(outputContexts, 'tamanio_pastel', 'tamanio_postre') || '';
+      const tipo    = p.tipo    || getParam(outputContexts, 'tipo_helado') || '';
+      const cantidad = p.cantidad || getParam(outputContexts, 'cantidad') || 1;
+      resumenPostres = `${cantidad}x ${[sabor, tamanio || tipo, postre].filter(Boolean).join(' ')}`;
+      totalGeneral   = calcularTotal(postre, cantidad, tamanio, tipo);
+    }
+
     const direccionRaw = await extraerConIA('direccion', queryText);
-    const direccion = await validarDireccion(direccionRaw) || direccionRaw;
-    const total = calcularTotal(postre, cantidad, tamanio, tipo);
-    const numPedido = await guardarEnSheets({ nombre, postre: postresDesc, cantidad, direccion, total });
+    const direccion    = await validarDireccion(direccionRaw) || direccionRaw;
+    const numPedido    = await guardarEnSheets({
+      nombre,
+      postre:   resumenPostres.replace(/\n🍰 /g, ' + '), // en Sheets en una sola línea
+      cantidad: pedidosAcumulados.reduce((s, i) => s + Number(i.cantidad || 1), 0) || 1,
+      direccion,
+      total:    totalGeneral
+    });
 
     return res.json({
-      fulfillmentText: `✅ ¡Pedido confirmado, ${nombre}!\n\n📋 Resumen:\n🔖 No. Pedido: ${numPedido}\n👤 Nombre: ${nombre}\n🍰 Pedido: ${cantidad}x ${postresDesc}\n📍 Dirección: ${direccion}\n💰 Total: $${total}\n\n🛵 Te contactamos pronto para confirmar.\n\n¡Gracias por tu compra! 🍰`,
+      fulfillmentText:
+        `✅ ¡Pedido confirmado, ${nombre}!\n\n` +
+        `📋 Resumen:\n` +
+        `🔖 No. Pedido: ${numPedido}\n` +
+        `👤 Nombre: ${nombre}\n` +
+        `🍰 ${resumenPostres}\n` +
+        `📍 Dirección: ${direccion}\n` +
+        `💰 Total: $${totalGeneral}\n\n` +
+        `🛵 Te contactamos pronto para confirmar.\n\n` +
+        `¡Gracias por tu compra! 🍰`,
       outputContexts: [
         { name: `${req.body.session}/contexts/esperando_direccion`, lifespanCount: 0 },
-        { name: `${req.body.session}/contexts/pedido_en_proceso`, lifespanCount: 0 }
+        { name: `${req.body.session}/contexts/pedido_en_proceso`,   lifespanCount: 0 },
       ]
     });
   }
