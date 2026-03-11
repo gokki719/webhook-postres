@@ -374,10 +374,24 @@ app.post('/webhook', async (req, res) => {
   if (intentName === 'pedir_direccion' || intentName === 'captura_direccion_fallback') {
     const ctxDir = outputContexts.find(c => c.name.includes('esperando_direccion'));
     const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
-    const p      = ctxDir?.parameters || ctxPed?.parameters || {};
 
-    const nombre            = p.nombre || 'Cliente';
-    const pedidosAcumulados = p.pedidos_acumulados || [];
+    // DEBUG
+    console.log('ctxDir acumulados:', ctxDir?.parameters?.pedidos_acumulados?.length ?? 'sin ctxDir');
+    console.log('ctxPed acumulados:', ctxPed?.parameters?.pedidos_acumulados?.length ?? 'sin ctxPed');
+    // Buscar en TODOS los contextos
+    let pedidosAcumulados = [];
+    let nombre = 'Cliente';
+    for (const ctx of outputContexts) {
+      if (ctx.parameters?.pedidos_acumulados?.length > 0) {
+        pedidosAcumulados = ctx.parameters.pedidos_acumulados;
+        console.log('Acumulados encontrados en:', ctx.name.split('/contexts/')[1], '| items:', pedidosAcumulados.length);
+        break;
+      }
+    }
+    // Buscar nombre en cualquier contexto
+    for (const ctx of outputContexts) {
+      if (ctx.parameters?.nombre) { nombre = ctx.parameters.nombre; break; }
+    }
 
     let resumenPostres = '';
     let cantidadTotal  = 1;
