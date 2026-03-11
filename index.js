@@ -92,7 +92,7 @@ function limpiarDireccionManual(texto) {
 // ─── EXTRACCIÓN CON GEMINI (con fallback automático al manual) ────────────────
 async function extraerConIA(tipo, texto) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     const prompts = {
       nombre: `Extrae SOLO el nombre completo de la persona. Elimina CUALQUIER prefijo como "de", "me llamo", "soy", "a nombre de", "mi nombre es", "el pedido es para", "ponlo a nombre de". Capitaliza cada palabra. Devuelve SOLO el nombre, sin explicaciones, sin puntos.\nEjemplos:\n- "a nombre de luis angel malagon" → "Luis Angel Malagon"\n- "el pedido es para sofia garcia" → "Sofia Garcia"\n- "me llamo juan" → "Juan"\nTexto: "${texto}"\nNombre:`,
       direccion: `Extrae SOLO la dirección. Elimina prefijos como "a", "a la calle", "mi direccion es", "vivo en", "mandalo a". Devuelve SOLO la dirección, sin explicaciones.\nTexto: "${texto}"\nDireccion:`
@@ -255,8 +255,14 @@ app.post('/webhook', async (req, res) => {
     const tipo     = getParam(outputContexts, 'tipo_helado');
     const cantidad = Number(getParam(outputContexts, 'cantidad')) || 1;
 
-    const ctxPed = outputContexts.find(c => c.name.includes('pedido_en_proceso'));
-    const prevAcumulados = ctxPed?.parameters?.pedidos_acumulados || [];
+    // Buscar pedidos acumulados en CUALQUIER contexto disponible
+    let prevAcumulados = [];
+    for (const ctx of outputContexts) {
+      if (ctx.parameters?.pedidos_acumulados?.length > 0) {
+        prevAcumulados = ctx.parameters.pedidos_acumulados;
+        break;
+      }
+    }
 
     const postresDesc = construirDescPostre(postre, sabor, tamanio, tipo);
     const totalItem   = calcularTotal(postre, cantidad, tamanio, tipo);
@@ -271,8 +277,8 @@ app.post('/webhook', async (req, res) => {
       fulfillmentText: '¡Claro! 😊 ¿Qué más quieres?\n\nRecuerda que tenemos:\n🍰 Pasteles  🍮 Gelatina  🍦 Helados\n🍪 Galletas  🍫 Trufas  🍓 Fruta picada\n🥧 Pay  🥛 Yogurt',
       outputContexts: [
         { name: req.body.session + '/contexts/esperando_agregar_mas',  lifespanCount: 0 },
-        { name: req.body.session + '/contexts/pedido_en_proceso',      lifespanCount: 10, parameters: { pedidos_acumulados: pedidosAcumulados } },
-        { name: req.body.session + '/contexts/esperando_nuevo_postre', lifespanCount: 5 },
+        { name: req.body.session + '/contexts/pedido_en_proceso',      lifespanCount: 15, parameters: { pedidos_acumulados: pedidosAcumulados } },
+        { name: req.body.session + '/contexts/esperando_nuevo_postre', lifespanCount: 5,  parameters: { pedidos_acumulados: pedidosAcumulados } },
       ]
     });
   }
